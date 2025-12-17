@@ -1,0 +1,195 @@
+import numpy as np
+import math, time
+import matplotlib.pyplot as plt
+
+np.set_printoptions(precision=6, suppress=True)
+
+# -------------------------------
+# Підпрограми
+# -------------------------------
+def dft_real(f):
+    f = np.asarray(f, dtype=float)
+    N = len(f)
+    A = np.zeros(N)
+    B = np.zeros(N)
+    t0 = time.time()
+    ops = 0
+    for k in range(N):
+        for m in range(N):
+            angle = 2 * math.pi * k * m / N
+            A[k] += f[m] * math.cos(angle)
+            B[k] -= f[m] * math.sin(angle)
+            ops += 4
+        A[k] /= N
+        B[k] /= N
+    return A, B, time.time() - t0, ops
+
+def idft_real(A, B):
+    N = len(A)
+    f_rec = np.zeros(N)
+    t0 = time.time()
+    ops = 0
+    for m in range(N):
+        for k in range(N):
+            angle = 2 * math.pi * k * m / N
+            f_rec[m] += A[k]*math.cos(angle) - B[k]*math.sin(angle)
+            ops += 4
+    return f_rec, time.time() - t0, ops
+
+def rmse(x, y):
+    return np.sqrt(np.mean((np.array(x)-np.array(y))**2))
+
+# ==========================================================
+# ЧАСТИНА I
+# ==========================================================
+print("\n==================== ЧАСТИНА I ====================")
+n = 4
+M = 10 + n
+m = np.arange(M)
+np.random.seed(42)
+
+# Пункт 5. Вхідний вектор
+print("\nГенерація довільного вхідного сигналу f[m]:")
+f = (1.2*np.cos(2*np.pi*1*m/M + 0.3)
+     + 0.6*np.sin(2*np.pi*3*m/M - 0.8)
+     + 0.15*np.random.randn(M))
+for i, val in enumerate(f):
+    print(f"f[{i}] = {val:.6f}")
+
+# Пункт 1–2. Обчислення коефіцієнтів ДПФ
+print("\nОбчислення коефіцієнтів A_k, B_k та комплексних C_k = A_k + jB_k:")
+A, B, t_dft, ops_dft = dft_real(f)
+C = A + 1j*B
+for k in range(M):
+    print(f"k={k:2d}:  A_k={A[k]: .6f},  B_k={B[k]: .6f},  C_k={C[k].real:+.6f}{C[k].imag:+.6f}j")
+print(f"\nЧас виконання ДПФ: {t_dft:.6f} с, кількість операцій ~{ops_dft}")
+
+# Пункт 3. Амплітудний і фазовий спектри
+print("\nАмплітудний та фазовий спектри:")
+amp = np.abs(C)
+phase = np.angle(C)
+for k in range(M):
+    print(f"k={k:2d}:  |C_k|={amp[k]: .6f},  φ_k={phase[k]: .6f} рад")
+
+# Пункт 4. Зворотне перетворення
+print("\nВідновлення сигналу через ІДПФ:")
+f_rec, t_idft, ops_idft = idft_real(A, B)
+for i in range(M):
+    print(f"m={i:2d}:  f[m]={f[i]: .6f},  f_rec[m]={f_rec[i]: .6f},  різниця={f[i]-f_rec[i]:+.2e}")
+print(f"\nRMSE(f, f_rec) = {rmse(f, f_rec):.3e}")
+print(f"Час ІДПФ: {t_idft:.6f} с, операцій ~{ops_idft}")
+
+# Графіки
+plt.figure()
+plt.stem(m, f, linefmt='b-', markerfmt='bo', basefmt='r-', label="Оригінал f[m]")
+plt.stem(m + 0.15, f_rec, linefmt='r--', markerfmt='r^', basefmt='r-', label="Відновлений f_rec[m]")
+plt.title("Частина I: f[m] та f_rec[m]")
+plt.xlabel("m")
+plt.ylabel("Амплітуда")
+plt.legend()
+plt.grid(True, linestyle='--', alpha=0.5)
+plt.tight_layout()
+plt.show()
+
+plt.figure()
+plt.stem(range(M), amp)
+plt.title("Частина I: Амплітудний спектр |C_k|")
+plt.xlabel("k"); plt.ylabel("|C_k|"); plt.tight_layout()
+
+plt.figure()
+plt.stem(range(M), phase)
+plt.title("Частина I: Фазовий спектр φ_k")
+plt.xlabel("k"); plt.ylabel("φ_k, рад"); plt.tight_layout()
+plt.show()
+
+# ==========================================================
+# ЧАСТИНА II
+# ==========================================================
+print("\n==================== ЧАСТИНА II ====================")
+
+# Пункт 1. Генерація 8 рівновіддалених відліків
+print("\nГенерація 8 відліків s[n] із двійкового подання числа 96+n (n=4, парне → вставляємо 0):")
+s = np.array([0,1,1,0,0,1,0,0], dtype=float)
+for i, val in enumerate(s):
+    print(f"s[{i}] = {val}")
+N = len(s)
+
+# Пункт 2. Обчислення коефіцієнтів
+print("\nОбчислення коефіцієнтів A_k, B_k, C_k для s[n]:")
+A2, B2, t_dft2, ops_dft2 = dft_real(s)
+C2 = A2 + 1j*B2
+for k in range(N):
+    print(f"k={k:2d}:  A_k={A2[k]: .6f},  B_k={B2[k]: .6f},  C_k={C2[k].real:+.6f}{C2[k].imag:+.6f}j")
+print(f"\nЧас ДПФ: {t_dft2:.6f} с, операцій ~{ops_dft2}")
+
+# Пункт 3. Відновлення сигналу
+print("\nВідтворення первинного аналогового сигналу s(t) за коефіцієнтами ДПФ:")
+
+T_delta = 1.0                 # крок дискретизації
+T_c = N * T_delta             # інтервал спостереження
+k_max = N // 2                # N/2
+
+# беремо лише C0..C_{N/2} 
+Cpos = C2[:k_max + 1]
+mag = np.abs(Cpos)
+phi = np.angle(Cpos)
+
+# Аналітичний вираз s(t)
+expr = f"s(t) = {mag[0]:.6f}"
+for k in range(1, k_max):
+    expr += f" + \n{2*mag[k]:.6f}·cos(2π·{k}·t/{T_c:.0f} { phi[k]:+.6f})"
+expr += f" + \n{mag[k_max]:.6f}·cos(2π·{k_max}·t/{T_c:.0f} { phi[k_max]:+.6f})"
+print("\nАналітичний вираз (ряд Фур'є):")
+print(expr)
+
+def s_analog(t):
+    y = mag[0] * np.ones_like(t, dtype=float)
+    for k in range(1, k_max):
+        y += 2 * mag[k] * np.cos(2*np.pi*k*t/T_c + phi[k])
+    y += mag[k_max] * np.cos(2*np.pi*k_max*t/T_c + phi[k_max])  
+    return y
+
+# Часова сітка та відтворений аналоговий сигнал
+t = np.linspace(0, T_c, 2000, endpoint=False)
+s_t = s_analog(t)
+
+# перевірка значень у точках дискретизації
+t_n = np.arange(N) * T_delta
+s_check = s_analog(t_n)
+print("\nПеревірка в точках t=nTδ:")
+for i in range(N):
+    print(f"n={i}:  s[n]={s[i]:.6f},  s(t_n)={s_check[i]:.6f},  різниця={s[i]-s_check[i]:+.2e}")
+
+# Графік s(t) від часу + дискретні відліки
+plt.figure()
+plt.plot(t, s_t, label="Відтворений аналоговий сигнал s(t)")
+plt.stem(t_n, s, linefmt='r-', markerfmt='ro', basefmt='k-', label="Дискретні відліки s[n]")
+plt.title("Частина II: Часова залежність відтвореного сигналу s(t)")
+plt.xlabel("t")
+plt.ylabel("s(t)")
+plt.grid(True, linestyle='--', alpha=0.5)
+plt.legend()
+plt.tight_layout()
+plt.show()
+
+# ==========================================================
+# ЧАСТИНА III
+# ==========================================================
+print("\n==================== ЧАСТИНА III ====================")
+
+# Пункт 1. Комплексні коефіцієнти
+print("\nКомплексні коефіцієнти C_k = A_k + jB_k:")
+for k in range(N):
+    print(f"k={k:2d}: C_k = {C2[k].real:+.6f}{C2[k].imag:+.6f}j")
+
+# Пункт 2. Обчислення s(0T8) і s(1T8)
+print("\nОбчислення відліків s(0T8) і s(1T8):")
+for m in [0, 1]:
+    sm = np.sum(C2 * np.exp(1j * 2 * np.pi * m * np.arange(N) / N))
+    print(f"\nm={m}:")
+    for k in range(N):
+        term = C2[k] * np.exp(1j * 2 * np.pi * m * k / N)
+        print(f"   k={k}: C_k·e^(j2πkm/N) = {term.real:+.6f}{term.imag:+.6f}j")
+    print(f"Σ = {sm.real:+.6f}{sm.imag:+.6f}j  → Re={sm.real:.6f}, Im={sm.imag:.2e}")
+    print(f"Порівняння з оригіналом s[{m}] = {s[m]}")
+
