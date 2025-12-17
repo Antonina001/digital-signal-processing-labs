@@ -1,0 +1,195 @@
+import numpy as np
+import mpmath as mp
+import matplotlib.pyplot as plt
+import pandas as pd
+
+# -----------------------------
+# НАЛАШТУВАННЯ 
+# -----------------------------
+n = 4            # параметр у експоненті exp(-x^2 / n)
+x_n_const = n    # x_n (константа).
+N = 10           # порядок ряду Фур'є (k = 0..N)
+mp.mp.dps = 60   # точність mpmath-квадратур
+
+# ============================================================
+# ПУНКТ 1. Точне аналітичне значення заданої функції
+# ============================================================
+
+def f_val(x, n, C):
+    """Векторизоване f(x) для numpy: C * exp(-x^2 / n)"""
+    x = np.asarray(x, dtype=float)
+    return C * np.exp(-(x**2)/n)
+
+def f_mp(t, n, C):
+    """Варіант для високоточної квадратури mpmath."""
+    return C * mp.e**(-(t**2)/n)
+
+print("— ПУНКТ 1 —  Аналітична функція")
+print(r"  f(x) = x_n · exp(-x^2 / n),   x ∈ [-π, π],   де x_n — константа.")
+print(f"  У нашому запуску: n = {n},   x_n = {x_n_const}\n")
+x_demo = np.linspace(-np.pi, np.pi, 7)
+f_demo = f_val(x_demo, n, x_n_const)
+print("\nЗначення f(x) у вибраних точках:")
+for xi, fi in zip(x_demo, f_demo):
+    print(f"  f({xi: .3f}) = {fi: .6f}")
+print()
+
+# ============================================================
+# ПУНКТ 2. Обчислення коефіцієнтів Фур’є a_k, b_k
+# ============================================================
+
+def compute_coeffs_const(n, C, N):
+    a0 = (2.0/np.pi) * mp.quad(lambda t: f_mp(t, n, C), [0, mp.pi])
+    a = np.zeros(N+1, dtype=float)
+    b = np.zeros(N+1, dtype=float)  
+    for k in range(1, N+1):
+        ak = (2.0/np.pi) * mp.quad(lambda t, kk=k: f_mp(t, n, C)*mp.cos(kk*t), [0, mp.pi])
+        a[k] = float(ak)
+    return float(a0), a, b
+
+a0, a, b = compute_coeffs_const(n, x_n_const, N)
+
+print("— ПУНКТ 2 —  Коефіцієнти Фур’є")
+print(r"  Ряд: f(x) = a0/2 + Σ_{k=1..N}[ a_k cos(kx) + b_k sin(kx) ]")
+print(r"  a0 = (1/π) ∫_{-π}^{π} f(x) dx  = (2/π) ∫_{0}^{π} f(x) dx (через парність)")
+print(r"  a_k = (1/π) ∫_{-π}^{π} f(x) cos(kx) dx = (2/π) ∫_{0}^{π} f(x) cos(kx) dx")
+print(r"  b_k = (1/π) ∫_{-π}^{π} f(x) sin(kx) dx = 0 (для всіх k, бо f парна)")
+print("Коефіцієнти a_k та b_k обчислено; їх буде збережено у пункті 6 у файл:")
+print(f"  /content/fourier_coeffs_constxn_n{n}_N{N}.csv\n")
+
+# ============================================================
+# ПУНКТ 3. Наближення рядом Фур’є до порядку N
+# ============================================================
+
+def series_approx(x, a0, a, b):
+    x = np.asarray(x, dtype=float)
+    S = np.full_like(x, 0.5*float(a0), dtype=float)
+    Nmax = len(a) - 1
+    for k in range(1, Nmax+1):
+        S += a[k]*np.cos(k*x) + b[k]*np.sin(k*x)
+    return S
+
+print("— ПУНКТ 3 —  Формула наближення")
+print(r"  S_N(x) = a0/2 + Σ_{k=1..N}[ a_k cos(kx) + b_k sin(kx) ]")
+print(f"  Обраний порядок N = {N}\n")
+
+# Грід для побудов
+x_plot = np.linspace(-np.pi, np.pi, 2001)
+f_plot = f_val(x_plot, n, x_n_const)
+S_plot = series_approx(x_plot, a0, a, b)
+
+# приклад числового обчислення ряду у точках
+S_demo = series_approx(x_demo, a0, a, b)
+print("Приклади обчислень ряду S_N(x) у вибраних точках:")
+for xi, si in zip(x_demo, S_demo):
+    print(f"  S_{N}({xi: .3f}) = {si: .6f}")
+print()
+
+# ============================================================
+# ПУНКТ 4. Графіки гармонік (k=0..N; N=10) і спектрів a(k), b(k)
+# ============================================================
+
+print("— ПУНКТ 4 —  Побудова графіків гармонік та спектрів a(k), b(k)\n")
+
+# 4.1 f(x) vs S_N(x)
+plt.figure()
+plt.plot(x_plot, f_plot, label="f(x)")
+plt.plot(x_plot, S_plot, label=f"S_{N}(x)")
+plt.title(f"Функція та наближення Фур’є (n={n}, N={N}, x_n={x_n_const})")
+plt.xlabel("x"); plt.ylabel("значення")
+plt.legend(); plt.tight_layout(); plt.show()
+
+# 4.2 Точкова похибка
+plt.figure()
+plt.plot(x_plot, f_plot - S_plot)
+plt.title("Похибка: f(x) - S_N(x)")
+plt.xlabel("x"); plt.ylabel("похибка")
+plt.tight_layout(); plt.show()
+
+# --- 4.3 ГАРМОНІКИ у часовій області (включно з k=0) ---
+plt.figure()
+# k=0: DC-компонента a0/2
+plt.plot(x_plot, np.full_like(x_plot, 0.5*float(a0)),
+         linestyle='--', label="k=0: a0/2")
+# k=1..N: косинус/синус-складові
+for k in range(1, N+1):
+    y = a[k]*np.cos(k*x_plot) + b[k]*np.sin(k*x_plot)
+    plt.plot(x_plot, y, label=f"k={k}")
+plt.title("Гармонійні складові (часова область)")
+plt.xlabel("x"); plt.ylabel("значення")
+plt.legend(ncol=2, fontsize=8)
+plt.tight_layout(); plt.show()
+
+# --- 4.4 СПЕКТРИ a_k та b_k на одному графіку ---
+ks = np.arange(1, N+1)
+plt.figure()
+plt.stem(ks, a[1:], linefmt='b-', markerfmt='bo', basefmt=' ')
+plt.stem(ks, b[1:], linefmt='r-', markerfmt='ro', basefmt=' ')
+plt.title("Спектр коефіцієнтів Фур’є (a_k – сині, b_k – червоні)")
+plt.xlabel("Номер гармоніки k"); plt.ylabel("Амплітуда")
+plt.tight_layout(); plt.show()
+
+
+# ============================================================
+# ПУНКТ 5. Оцінка відносної похибки наближення
+# ============================================================
+
+def relative_L2_error(n, C, a0, a, b, num=40001):
+    xs = np.linspace(-np.pi, np.pi, num)
+    fx = f_val(xs, n, C)
+    Sx = series_approx(xs, a0, a, b)
+    nume = np.trapz((fx - Sx)**2, xs)
+    deno = np.trapz(fx**2, xs)
+    return float(np.sqrt(nume/deno))
+
+def max_abs_error(n, C, a0, a, b, num=40001):
+    xs = np.linspace(-np.pi, np.pi, num)
+    fx = f_val(xs, n, C)
+    Sx = series_approx(xs, a0, a, b)
+    return float(np.max(np.abs(fx - Sx)))
+
+rel_err = relative_L2_error(n, x_n_const, a0, a, b)
+max_err = max_abs_error(n, x_n_const, a0, a, b)
+
+print("— ПУНКТ 5 —  Оцінка похибки")
+print(r"  Відносна L2-похибка: ε_N = ||f - S_N||_2 / ||f||_2  (на [-π, π])")
+print(f"  ε_N = {rel_err}")
+print(f"  Максимальна |похибка| = {max_err}\n")
+
+# ============================================================
+# ПУНКТ 6. Збереження у файл:
+#   a) порядок N
+#   b) коефіцієнти ряду Фур'є
+#   c) похибка наближення
+# ============================================================
+
+rows = [{"k": 0, "type": "a0", "value": float(a0)}]
+rows += [{"k": k, "type": "a_k", "value": float(a[k])} for k in range(1, N+1)]
+rows += [{"k": k, "type": "b_k", "value": float(b[k])} for k in range(1, N+1)]  # нулі
+
+df = pd.DataFrame(rows)
+csv_path = f"/content/fourier_coeffs_constxn_n{n}_N{N}.csv"
+df.to_csv(csv_path, index=False)
+
+txt_lines = []
+txt_lines.append("РОЗКЛАД У РЯД ФУР'Є")
+txt_lines.append(f"f(x) = x_n * exp(-x^2/{n}),  x ∈ [-pi, pi],  де x_n=константа={x_n_const}")
+txt_lines.append(f"Порядок N = {N}")
+txt_lines.append("")
+txt_lines.append("Формули (ряд Фур'є на [-π, π]):")
+txt_lines.append("  f(x) = a0/2 + Σ_{k=1..N}[ a_k cos(kx) + b_k sin(kx) ]")
+txt_lines.append("  a0 = (1/π) ∫_{-π}^{π} f(x) dx  = (2/π) ∫_{0}^{π} f(x) dx (бо f парна)")
+txt_lines.append("  a_k = (1/π) ∫_{-π}^{π} f(x) cos(kx) dx = (2/π) ∫_{0}^{π} f(x) cos(kx) dx")
+txt_lines.append("  b_k = (1/π) ∫_{-π}^{π} f(x) sin(kx) dx = 0 (через парність)")
+txt_lines.append("")
+txt_lines.append(f"Відносна L2-похибка ε_N = {rel_err}")
+txt_lines.append(f"Максимальна |похибка| = {max_err}")
+
+txt_path = f"/content/fourier_summary_constxn_n{n}_N{N}.txt"
+with open(txt_path, "w", encoding="utf-8") as f:
+    f.write("\n".join(txt_lines))
+
+print("— ПУНКТ 6 —  Збережено файли")
+print(f"  CSV з коефіцієнтами: {csv_path}")
+print(f"  TXT з підсумком:     {txt_path}\n")
+
