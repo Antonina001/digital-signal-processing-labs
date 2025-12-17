@@ -1,0 +1,131 @@
+import numpy as np, math, time
+import matplotlib.pyplot as plt
+
+np.set_printoptions(precision=6, suppress=True)
+
+# ---------- DFT ----------
+def dft_real_counted(f):
+    f = np.asarray(f, float)
+    N = len(f)
+    A = np.zeros(N); B = np.zeros(N)
+    mul = add = 0
+    t0 = time.perf_counter()
+    for k in range(N):
+        for m in range(N):
+            ang = 2 * math.pi * k * m / N
+            A[k] += f[m] * math.cos(ang);  mul += 1; add += 1
+            B[k] -= f[m] * math.sin(ang);  mul += 1; add += 1
+    A /= N; B /= N
+    return A, B, time.perf_counter() - t0, mul, add
+
+# ---------- FFT (radix-2) ----------
+def _bitrev(n):
+    b = int(math.log2(n))
+    idx = np.arange(n)
+    for i in range(n): idx[i] = int(f"{i:0{b}b}"[::-1], 2)
+    return idx
+
+def fft_radix2_counted(x):
+    x = np.asarray(x, complex)
+    N = len(x)
+    a = x[_bitrev(N)].copy()
+    mul = add = 0
+    t0 = time.perf_counter()
+    m = 2
+    while m <= N:
+        half = m // 2
+        W = np.exp(-2j*np.pi*np.arange(half)/m)
+        for k in range(0, N, m):
+            u = a[k:k+half].copy()
+            v = a[k+half:k+m] * W
+            mul += 4*half; add += 2*half   # комплексні множення
+            a[k:k+half]   = u + v
+            a[k+half:k+m] = u - v
+            add += 4*half                  # комплексні додавання
+        m *= 2
+    return a, time.perf_counter() - t0, mul, add
+
+def ifft_radix2(X):
+    X = np.asarray(X, complex); N = len(X)
+    x_conj, _, _, _ = fft_radix2_counted(np.conj(X))
+    return np.conj(x_conj) / N
+
+# ==========================================================
+# 1) Вихідний сигнал (N=16)
+# ==========================================================
+N = 16
+m = np.arange(N)
+np.random.seed(42)
+f = (1.2*np.cos(2*np.pi*1*m/N + 0.3)
+     + 0.6*np.sin(2*np.pi*3*m/N - 0.8)
+     + 0.15*np.random.randn(N))
+
+print("\n==================== ВИХІДНИЙ СИГНАЛ (N=16) ====================")
+for i, val in enumerate(f):
+    print(f"f[{i}] = {val:.6f}")
+
+# ==========================================================
+# 2) Порівняння ДПФ і ШПФ
+# ==========================================================
+print("\n==================== ПОРІВНЯННЯ ШПФ ТА ДПФ (N=16) ====================")
+A, B, t_dft, mul_dft, add_dft = dft_real_counted(f)
+C_dft = A + 1j*B
+amp_dft = np.abs(C_dft)
+
+F_fft, t_fft, mul_fft, add_fft = fft_radix2_counted(f)
+C_fft = F_fft / N
+amp_fft = np.abs(C_fft)
+f_rec = ifft_radix2(F_fft).real
+
+print(f"DFT  -> time: {t_dft:.6f} s | real mult: {mul_dft} | real add: {add_dft}")
+print(f"FFT  -> time: {t_fft:.6f} s | real mult: {mul_fft} | real add: {add_fft}")
+
+# ==========================================================
+# 3) Графіки
+# ==========================================================
+# --- Амплітудні спектри ---
+plt.figure()
+k = np.arange(N)
+plt.stem(k, amp_dft, linefmt="C1-", markerfmt="C1o", basefmt=" ", label="DFT |C_k|")
+plt.stem(k+0.1, amp_fft, linefmt="C0--", markerfmt="C0^", basefmt=" ", label="FFT |C_k|")
+plt.title("Амплітудні спектри: DFT vs FFT (N=16)")
+plt.xlabel("k"); plt.ylabel("|C_k|"); plt.legend(); plt.tight_layout()
+
+# --- Сигнал у часі ---
+plt.figure()
+plt.stem(m, f, linefmt="C2-", markerfmt="C2o", basefmt=" ", label="Оригінал f[m]")
+plt.stem(m+0.15, f_rec, linefmt="C3--", markerfmt="C3^", basefmt=" ", label="Після IFFT(FFT)")
+plt.title("Сигнал у часі: оригінал vs після перетворення (N=16)")
+plt.xlabel("m"); plt.ylabel("Амплітуда"); plt.legend(); plt.tight_layout()
+plt.show()
+print("RMSE(|C|_DFT, |C|_FFT) =", np.sqrt(np.mean((amp_dft - amp_fft)**2)))
+print("RMSE(f, f_rec) =", np.sqrt(np.mean((f - f_rec)**2)))
+
+# ==========================================================
+# 4) Бенчмарк часу для кількох N (тільки степені двійки)
+# ==========================================================
+Ns = [8, 16, 32, 64, 128, 256, 512]
+times_dft, times_fft = [], []
+
+for N in Ns:
+    x = np.random.randn(N)
+    _, _, td, _, _ = dft_real_counted(x)
+    times_dft.append(td)
+    _, tf, _, _ = fft_radix2_counted(x)
+    times_fft.append(tf)
+
+plt.figure()
+plt.plot(Ns, times_dft, marker="o", label="DFT O(N²)")
+plt.plot(Ns, times_fft, marker="^", label="FFT O(N log N)")
+plt.xscale("log"); plt.yscale("log")
+plt.xlabel("N (log)"); plt.ylabel("Час, с (log)")
+plt.title("Порівняння часу: DFT vs FFT")
+plt.legend(); plt.grid(True, which="both", ls="--", alpha=0.5)
+plt.tight_layout()
+plt.show()
+speedup = times_dft[-1] / times_fft[-1]
+print("\n==================== ПІДСУМОК ====================")
+print(f"Для N = {Ns[-1]} ШПФ виконується приблизно у {speedup:.1f} разів швидше за ДПФ.")
+print("Графік підтверджує теоретичну складність: DFT ~ O(N²), FFT ~ O(N log N).")
+print("Отже, при збільшенні N перевага ШПФ зростає експоненціально, "
+      "що робить його основним методом спектрального аналізу у цифровій обробці сигналів.")
