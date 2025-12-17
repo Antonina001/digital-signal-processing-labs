@@ -1,0 +1,75 @@
+import numpy as np
+import matplotlib.pyplot as plt
+
+# ------------------ Параметри ------------------
+n = 4
+N = 100 * n
+M = 10001                  # кількість точок сітки
+Kmax = 10                  # кількість k (0..Kmax)
+T_values = [4, 8, 16, 32, 64, 128]
+
+# ------------------ Сітка t ------------------
+t = np.linspace(-N, N, M, dtype=np.float64)
+dt = t[1] - t[0]
+
+# ------------------ Функція f(t) ------------------
+def f_of_t(t_array):
+    return np.sign(t_array) * (np.abs(t_array) ** (2*n))
+
+f_t = f_of_t(t)
+
+# ------------------ Крок 1: обчислення k-го члена інтегралу ------------------
+def compute_Fk_formula(f_t_array, t_array, k, T):
+    w_k = 2.0 * np.pi * k / T
+    cos_part = np.cos(-w_k * t_array)
+    sin_part = np.sin(-w_k * t_array)
+    ReF = np.trapz(f_t_array * cos_part, t_array)
+    ImF = np.trapz(f_t_array * sin_part, t_array)
+    return ReF, ImF
+
+# ------------------ Крок 2: спектр амплітуд ------------------
+def amplitude_spectrum(Re_list, Im_list):
+    re = np.array(Re_list)
+    im = np.array(Im_list)
+    return np.sqrt(re**2 + im**2)
+
+# ------------------ Основна частина ------------------
+for T in T_values:
+    ks = np.arange(0, Kmax + 1)
+    print(f"\nДля T={T}.")
+
+    # Крок 1
+    print("\nКрок 1")
+    Re_list = []
+    Im_list = []
+    for k in ks:
+        ReF, ImF = compute_Fk_formula(f_t, t, k, T)
+        Re_list.append(ReF)
+        Im_list.append(ImF)
+        print(f"Обчислення k-го члена інтегралу Фур'є: k={k} Re={ReF:.6e} Im={ImF:.6e} F(w_k)={ReF:.6e}+j*{ImF:.6e}")
+
+    # Крок 2
+    print("\nКрок 2")
+    Amp_array = amplitude_spectrum(Re_list, Im_list)
+    for k, val in zip(ks, Amp_array):
+        print(f"{k}: |F|={val:.6e}")
+
+    # Крок 3
+    print("\nКрок 3")
+    
+
+    plt.figure(figsize=(8, 4))
+    plt.subplot(1, 2, 1)
+    plt.plot(ks, Re_list, marker='o', linestyle='-')
+    plt.title(f"T={T}  ReF(w_k)")
+    plt.xlabel("k")
+    plt.grid(True)
+
+    plt.subplot(1, 2, 2)
+    plt.plot(ks, Amp_array, marker='o', linestyle='-')
+    plt.title(f"T={T}  |F(w_k)|")
+    plt.xlabel("k")
+    plt.grid(True)
+
+    plt.tight_layout()
+    plt.show()
